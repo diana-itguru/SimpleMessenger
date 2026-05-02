@@ -1,0 +1,65 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Messenger Test</title>
+    <meta charset="utf-8" />
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
+        #chatbox { height: 300px; border: 1px solid #ccc; background: white; overflow-y: scroll; padding: 10px; margin-bottom: 10px; border-radius: 8px; }
+        .msg { margin-bottom: 8px; padding: 5px; border-radius: 4px; background: #e7f3ff; }
+        input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+</head>
+<body>
+<h2>Чат (SignalR)</h2>
+<input type="text" id="tokenInput" placeholder="Вставь JWT токен из .http файла" style="width: 100%; margin-bottom: 10px;" />
+<div id="chatbox"></div>
+<input type="text" id="userInput" placeholder="Имя" style="width: 100px;" />
+<input type="text" id="messageInput" placeholder="Сообщение..." style="width: 250px;" />
+<button id="sendBtn" style="padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Отправить</button>
+
+<!-- Используем CDN, который обычно не блокируется (Microsoft) -->
+<script src="signalr.min.js"></script>
+
+<script>
+    let connection;
+
+    document.getElementById("sendBtn").onclick = async function() {
+        const token = document.getElementById("tokenInput").value.trim();
+        const user = document.getElementById("userInput").value;
+        const message = document.getElementById("messageInput").value;
+
+        if (!token) { alert("Сначала вставь токен!"); return; }
+
+        if (!connection) {
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("/chathub", { accessTokenFactory: () => token })
+                .build();
+
+            connection.on("ReceiveMessage", (u, m) => {
+                const div = document.createElement("div");
+                div.className = "msg";
+                div.innerHTML = `<b>${u}:</b> ${m}`;
+                document.getElementById("chatbox").appendChild(div);
+                document.getElementById("chatbox").scrollTop = document.getElementById("chatbox").scrollHeight;
+            });
+
+            try {
+                await connection.start();
+                console.log("Подключено!");
+            } catch (err) {
+                alert("Ошибка подключения: " + err);
+                return;
+            }
+        }
+
+        try {
+            await connection.invoke("SendMessage", user, message);
+            document.getElementById("messageInput").value = "";
+        } catch (err) {
+            console.error(err);
+        }
+    };
+</script>
+</body>
+</html>

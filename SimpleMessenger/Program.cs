@@ -5,6 +5,8 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using BCrypt.Net;
+using Microsoft.AspNetCore.SignalR;
+using SimpleMessenger;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,7 +18,15 @@ builder.Services.AddSingleton(database.GetCollection<User>("Users")); //крит
 
 var secretKey = builder.Configuration["JwtSettings:SecretKey"];
 
+//SignalR
+builder.Services.AddSignalR();
+builder.Services.AddSingleton(database.GetCollection<Message>("Messages"));
+
 var app = builder.Build();
+
+//передача статики на html, чтоб видеть в браузере
+app.UseDefaultFiles(); 
+app.UseStaticFiles();
 
 app.UseMiddleware<AuthMiddleware>(); //вызов Middleware авторизации
 
@@ -56,5 +66,11 @@ app.MapGet("/getuser", (HttpContext context) =>
         role = userRole 
     });
 });
+
+//
+app.MapGet("/chat/history", async (IMongoCollection<Message> collection) =>
+    await collection.Find(_ => true).Limit(50).ToListAsync());
+
+app.MapHub<ChatHub>("/chathub");
 
 app.Run();
