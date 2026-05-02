@@ -1,6 +1,54 @@
-@SimpleMessenger_HostAddress = http://localhost:5045
+@baseUrl = http://localhost:5045
 
-GET {{SimpleMessenger_HostAddress}}/weatherforecast/
-Accept: application/json
+### Регистрация админа
+POST {{baseUrl}}/register
+Content-Type: application/json
 
-###
+{
+  "username": "chef",
+  "passwordHash": "chef2026",
+  "role": "ADMIN"
+}
+
+### Регистрация юзера
+POST {{baseUrl}}/register
+Content-Type: application/json
+
+{
+  "username": "user1",
+  "passwordHash": "user1_2026",
+  "role": "USER"
+}
+
+### Логин админа
+#@name loginAdmin
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "username": "chef",
+  "password": "chef2026"
+}
+> {% client.global.set("adminToken", response.body.token) %}
+
+### Логин пользователя
+#@name loginUser
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "username": "user1",
+  "password": "user1_2026"
+}
+> {% client.global.set("userToken", response.body.token) %}
+
+### Проверка Админа (должно быть 200 OK)
+GET {{baseUrl}}/getuser
+Authorization: Bearer {{adminToken}}
+
+### Проверка Юзера (должно быть 403 Forbidden)
+GET {{baseUrl}}/getuser
+Authorization: Bearer {{userToken}}
+
+### Проверка без токена (должно быть 401 Unauthorized)
+GET {{baseUrl}}/getuser

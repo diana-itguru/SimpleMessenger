@@ -1,41 +1,60 @@
+using Microsoft.IdentityModel.Tokens;
+using MongoDB.Driver;
+using SimpleMessenger.Models;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using BCrypt.Net;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+//MongoDB
+var connectionString = builder.Configuration["MongoDB:ConnectionString"];
+var mongoClient = new MongoClient(connectionString);
+var database = mongoClient.GetDatabase("SimpleMessenger");
+builder.Services.AddSingleton(database.GetCollection<User>("Users")); //критически важная строка, потому что объясняет программе, что такое IMongoCollection<User>
+
+var secretKey = builder.Configuration["JwtSettings:SecretKey"];
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+app.UseMiddleware<AuthMiddleware>(); //вызов Middleware авторизации
+
+//Регистрация
+app.MapPost("/register", async (User user, IMongoCollection<User> users) =>
 {
-    app.MapOpenApi();
-}
+    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(user.PasswordHash);
+    await users.InsertOneAsync(user);
+    return Results.Created($"/users/{user.Id}", user);
+});
 
-app.UseHttpsRedirection();
-
-var summaries = new[]
+//Логин
+app.MapPost("/login", async (UserDto logged, IMongoCollection<User> users) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    var user = await users.Find(u => u.Username == logged.Username).FirstOrDefaultAsync();
 
-app.MapGet("/weatherforecast", () =>
-    {
-        var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-            .ToArray();
-        return forecast;
-    })
-    .WithName("GetWeatherForecast");
+    if (user == null || !BCrypt.Net.BCrypt.Verify(logged.Password, user.PasswordHash))
+        return Results.Unauthorized();
+    
+    var token = TokenService.GenerateToken(user, secretKey);
+    return Results.Ok(new { Token = token });
+});
+
+// Тестовый эндпоинт
+app.MapGet("/getuser", (HttpContext context) =>
+{
+    var userId = context.Items["UserId"];
+    var userRole = context.Items["UserRole"];
+    
+    if (userId == null) return Results.Json(new { message = "Unauthorized" }, statusCode: 401);
+    
+    if (userRole?.ToString() != "ADMIN") return Results.Json(new { message = "Forbidden" }, statusCode: 403);
+
+    return Results.Ok(new { 
+        message = "Привет, Админ! Ты авторизован.", 
+        id = userId, 
+        role = userRole 
+    });
+});
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
